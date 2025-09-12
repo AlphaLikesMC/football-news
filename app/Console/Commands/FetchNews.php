@@ -8,37 +8,64 @@ use App\Models\News;
 
 class FetchNews extends Command
 {
-    protected $signature = 'fetch:news';
-    protected $description = 'Fetch Saudi Pro League related football news only';
+    protected $signature = 'fetch:news {--since=}';
+    protected $description = 'Fetch Saudi Pro League related football news (with categories)';
 
     public function handle()
     {
         $this->info("🔍 Fetching articles from Python microservice...");
 
         try {
-            $response = Http::timeout(500)->get("http://127.0.0.1:5000/saudi-news");
+            $base = "http://127.0.0.1:5000/saudi-news";
+
+            // Optional delta fetch: --since="2025-01-01 00:00:00" or "2025-01-01"
+            $since = $this->option('since');
+            $url = $since ? $base . '?since=' . urlencode($since) : $base;
+
+            $response = Http::timeout(120)->get($url);
 
             if (!$response->successful()) {
-                $this->error("⚠️ Failed to reach Python service");
+                $this->error("⚠️ Failed to reach Python service: ".$response->status());
                 return;
             }
 
             $articles = $response->json();
+            $imported = 0;
 
             foreach ($articles as $article) {
+                $title   = $article['title'] ?? '';
+                $content = $article['content'] ?? '';
+                $link    = $article['link'] ?? '';
+
+                if (!$title || !$link) {
+                    continue;
+                }
+
+                // Skip suspicious/bot-blocked responses
+                $blob = strtolower($title . ' ' . $content);
+                if (str_contains($blob, '429 too many requests') ||
+                    str_contains($blob, 'access denied') ||
+                    str_contains($blob, 'captcha') ||
+                    str_contains($blob, 'cloudflare')) {
+                    continue;
+                }
+
                 News::updateOrCreate(
-                    ['link' => $article['link']],
+                    ['link' => $link],
                     [
-                        'title'        => $article['title'],
+                        'title'        => $title,
                         'description'  => $article['description'] ?? null,
-                        'published_at' => $article['published_at'],
-                        'content'      => $article['content'],
+                        'published_at' => $article['published_at'] ?? now()->toDateTimeString(),
+                        'content'      => $content ?: null,
                         'image'        => !empty($article['image']) ? $article['image'] : null,
+                        'category'     => $article['category'] ?? 'General',
                     ]
-                );                
+                );
+
+                $imported++;
             }
 
-            $this->info("✅ Imported " . count($articles) . " articles.");
+            $this->info("✅ Imported/Updated {$imported} of ".count($articles)." items.");
         } catch (\Exception $e) {
             $this->error("❌ Error: " . $e->getMessage());
         }
