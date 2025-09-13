@@ -15,6 +15,7 @@ class News extends Model
         'description',
         'published_at',
         'content',
-        'image', // ✅ allow saving images
+        'image',
+        'content',
     ];
 }

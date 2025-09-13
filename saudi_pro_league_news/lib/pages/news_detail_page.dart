@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/news.dart';
 import '../utils/custom_cache_manager.dart';
@@ -9,38 +10,46 @@ class NewsDetailPage extends StatelessWidget {
 
   const NewsDetailPage({super.key, required this.article});
 
-  List<Widget> _buildContent(BuildContext context) {
-    final widgets = <Widget>[];
-    final text =
+  Widget _buildContent(BuildContext context) {
+    final content =
         article.content ?? article.description ?? "No content available";
 
-    final parts = text.split(RegExp(r"\s+"));
-    final buffer = StringBuffer();
+    // Clean up the content by removing escape sequences and fixing HTML
+    String cleanContent = content
+        .replaceAll(r'\u003C', '<')
+        .replaceAll(r'\u003E', '>')
+        .replaceAll(r'\"', '"')
+        .replaceAll(r'\n', '\n');
 
-    for (final word in parts) {
-      if (word.startsWith("http")) {
-        if (buffer.isNotEmpty) {
-          widgets.add(
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                buffer.toString(),
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          );
-          buffer.clear();
+    return HtmlWidget(
+      cleanContent,
+      textStyle: Theme.of(context).textTheme.bodyMedium,
+      onTapUrl: (url) async {
+        final uri = Uri.tryParse(url);
+        if (uri != null && await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return true;
         }
-
-        if (word.endsWith(".jpg") ||
-            word.endsWith(".jpeg") ||
-            word.endsWith(".png") ||
-            word.endsWith(".gif")) {
-          widgets.add(
-            Padding(
+        return false;
+      },
+      customStylesBuilder: (element) {
+        if (element.localName == 'p') {
+          return {'margin': '0 0 12px 0'};
+        }
+        if (element.localName == 'strong') {
+          return {'font-weight': 'bold'};
+        }
+        return null;
+      },
+      customWidgetBuilder: (element) {
+        // Handle images in HTML content
+        if (element.localName == 'img') {
+          final src = element.attributes['src'];
+          if (src != null) {
+            return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: CachedNetworkImage(
-                imageUrl: word,
+                imageUrl: src,
                 cacheManager: CustomCacheManager.instance,
                 width: double.infinity,
                 fit: BoxFit.contain,
@@ -52,48 +61,12 @@ class NewsDetailPage extends StatelessWidget {
                   child: const Icon(Icons.broken_image),
                 ),
               ),
-            ),
-          );
-        } else {
-          widgets.add(
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: InkWell(
-                onTap: () async {
-                  final uri = Uri.tryParse(word);
-                  if (uri != null && await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-                child: Text(
-                  word,
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ),
-          );
+            );
+          }
         }
-      } else {
-        buffer.write("$word ");
-      }
-    }
-
-    if (buffer.isNotEmpty) {
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            buffer.toString(),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    return widgets;
+        return null;
+      },
+    );
   }
 
   String _sourceFromLink(String? link) {
@@ -208,7 +181,7 @@ class NewsDetailPage extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    ..._buildContent(context),
+                    _buildContent(context),
                     const SizedBox(height: 20),
                     Center(
                       child: ElevatedButton.icon(
