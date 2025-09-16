@@ -16,8 +16,8 @@ class FetchNews extends Command
         $this->info("🔍 Fetching articles from Python microservice...");
 
         try {
-            $base = "https://airy-harmony-production-31f6.up.railway.app:5000/saudi-news";
-
+            $base = "http://airy-harmony.railway.internal:5000/saudi-news";
+            
             // Optional delta fetch: --since="2025-01-01 00:00:00" or "2025-01-01"
             $since = $this->option('since');
             $url = $since ? $base . '?since=' . urlencode($since) : $base;
